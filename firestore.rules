@@ -1,0 +1,50 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function isOperator() { return signedIn() && me().role == 'OPERATOR'; }
+    function ownsService(serviceId) {
+      return get(/databases/$(database)/documents/services/$(serviceId)).data.providerId == request.auth.uid;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isOperator());
+      allow create: if signedIn() && request.auth.uid == uid
+                    && request.resource.data.role in ['STUDENT', 'OPERATOR'];
+      allow update: if signedIn() && request.auth.uid == uid
+                    && request.resource.data.role == resource.data.role;
+    }
+
+    match /services/{serviceId} {
+      allow read: if signedIn();
+      allow create: if isOperator() && request.resource.data.providerId == request.auth.uid;
+      // The owner can change anything; students may only touch the counters used when joining/cancelling.
+      allow update: if signedIn() && (
+          resource.data.providerId == request.auth.uid ||
+          request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['lastTokenNumber', 'waitingCount', 'dayKey'])
+      );
+    }
+
+    match /tokens/{tokenId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.status == 'WAITING';
+      allow update: if signedIn() && (
+          ownsService(resource.data.serviceId) ||
+          (resource.data.userId == request.auth.uid
+            && resource.data.status == 'WAITING'
+            && request.resource.data.status == 'CANCELLED'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']))
+      );
+    }
+
+    match /queueEvents/{eventId} {
+      allow create: if signedIn() && request.resource.data.actorId == request.auth.uid;
+      allow read: if signedIn() && (resource.data.actorId == request.auth.uid || isOperator());
+    }
+  }
+}

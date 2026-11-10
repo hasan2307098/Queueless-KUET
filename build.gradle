@@ -1,0 +1,10 @@
+// Top-level build file (Android Studio Dolphin 2021.3.1 -> AGP 7.3.1, Gradle 7.4)
+plugins {
+    id 'com.android.application' version '7.3.1' apply false
+    id 'com.android.library' version '7.3.1' apply false
+    id 'com.google.gms.google-services' version '4.3.15' apply false
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}
